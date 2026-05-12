@@ -1,103 +1,134 @@
 ---
 name: arxiv-translator
-description: 将 arXiv 论文自动翻译为中文 PDF。触发后按本 skill 四步顺序直接执行，勿长篇规划。用户提供论文标题或 arXiv ID、说「翻译论文」「我想读中文版」等时立即使用。支持多篇论文处理。无需用户手动操作。
+description: 將 arXiv 論文自動整理為雙語 Markdown（英文原文在前、繁體中文翻譯在後，.md），不生成 PDF。使用者提供 arXiv ID、URL、論文標題，或提到「翻譯論文」「我想讀中文版」「轉成 md」時立即使用。支援多篇論文順序處理，無需使用者手動操作。
 ---
 
-# arXiv 论文中文翻译
+# arXiv 論文雙語 Markdown 翻譯
 
-**目标：** 将指定论文的 LaTeX 源码译为中文，并编译得到 PDF。
+**目標：** 將指定 arXiv 論文的 LaTeX source 整理成英文原文與繁體中文翻譯並列的雙語 Markdown（`.md`），並嵌入高品質圖片；預設不編譯 PDF。
 
-**流程：** 须严格按下文「第一步」至「第四步」顺序执行，不得擅自省略、合并或调换步骤。
+**流程：** 必須依「第一步」到「第四步」順序執行，不得省略、合併或調換。
 
-**交互：** 仅在论文 ID 无法确定、检索结果存在多个需用户择一才可向用户提问；其余情况一律无中断的执行得到最终翻译后的PDF。
+**互動：** 只有在論文 ID 無法確定，或搜尋結果有多個候選必須由使用者選擇時，才向使用者提問；其餘情況直接完成 Markdown。
 
-**翻译：** 翻译全部由当前对话模型自身完成，严禁使用外部翻译工具以及下载已有的翻译版本。
-
----
-
-## 第一步：确定论文 ID
-
-- arXiv URL/ID → 直接提取 ID
-- 论文标题 → 搜索 arXiv / 网页查找 ID；找不到时给出候选让用户确认
+**翻譯：** 翻譯由目前對話模型完成；不得使用外部翻譯工具，也不得下載既有翻譯版本。
 
 ---
 
-## 第二步：获取源码并确定翻译范围
+## 第一步：確定論文 ID
+
+- arXiv URL / ID：直接擷取 ID。
+- 論文標題：搜尋 arXiv / 網頁確認 ID；若無法唯一確定，列候選請使用者確認。
+
+---
+
+## 第二步：取得 source 並確定翻譯範圍
 
 ```bash
 python3 {SKILL_DIR}/scripts/download.py "{PAPER_ID}" "$OUTPUT_DIR/.tmp_arxiv/{PAPER_ID}"
 ```
 
-`download.py` 一步完成：下载源码 → 解压 → 递归查找 `.tex` → 定位主文件 → 提取标题。
+`download.py` 會下載 source、解壓、遞迴尋找 `.tex`、定位主檔並取得論文標題。
 
-`OUTPUT_DIR` 为用户指定的保存路径，未指定则为当前目录
+`OUTPUT_DIR` 為使用者指定的保存路徑；未指定時使用目前目錄。
 
-无源码（仅 PDF）则告知用户跳过。
+若論文沒有 LaTeX source、只有 PDF，告知使用者並跳過。
 
-脚本向 stdout 输出三行，格式如下：
+腳本 stdout 會輸出三行：
+
+```text
+WORK_DIR=<source 目錄絕對路徑>
+MAIN_TEX=<主檔相對路徑>
+PDF_NAME=<論文標題>
 ```
-WORK_DIR=<源码目录绝对路径>
-MAIN_TEX=<主文件相对路径>
-PDF_NAME=<论文标题>
-```
----
-
-## 第三步：翻译
-
-由当前**对话模型**直接在原 `.tex` 文件上进行翻译修改，按以下规则翻译：
-
-- **翻译范围：** 默认只翻正文，不翻附录，但附录中的内容需要得到保留，若同一文件中出现 `\appendix`，默认只翻该命令之前的内容。用户明确要求“翻译全文”时才翻附录。
-- **必须翻译：** 正文叙述、摘要、图表标题、列表项、脚注中的描述文本，以及代码块中的注释。
-- **保留不翻：** 数学环境、LaTeX 命令、`\cite{}`/`\ref{}`/`\label{}`、图片路径、URL、代码本体、`.bib`、人名、机构名、模型名、数据集名。
-- **专有名词：** Transformer、Softmax、Token 等通用学术术语保留英文，不要生硬硬译。
-- **标题要求：** `\title{}` 须改为自然中文题名，不保留英文原题或中英并列；输出 PDF 文件名仍使用第二步的 `PDF_NAME`。
-- **多篇处理：** 多篇论文可以分别处理；只有在用户**明确要求**并行委派时，才开启多个 subagent，否则直接顺序完成。
-
-译后必须做自检：
-
-```bash
-python3 {SKILL_DIR}/scripts/inspect_tex.py scan "$WORK_DIR" "$MAIN_TEX" body
-```
-
-若用户明确要求“翻译全文”，则改为：
-
-```bash
-python3 {SKILL_DIR}/scripts/inspect_tex.py scan "$WORK_DIR" "$MAIN_TEX" full
-```
-
-脚本会输出 `SUSPECT_COUNT=<数字>` 以及若干 `SUSPECT=<文件>:<行号>:<片段>`。
-- 只要 `SUSPECT_COUNT` 非 0，就必须逐条回到对应位置进行翻译；
-- 只有 `SUSPECT_COUNT=0`，或剩余项明确属于“保留不翻”范围时，才可进入第四步。
 
 ---
 
-## 第四步：编译与清理
+## 第三步：翻譯並生成 Markdown
 
-编译：
+先渲染圖片資源：
 
 ```bash
-python3 {SKILL_DIR}/scripts/compile.py "$WORK_DIR" "$MAIN_TEX" "$OUTPUT_DIR/$PDF_NAME.pdf"
+python3 {SKILL_DIR}/scripts/render_figures.py "$WORK_DIR" "$MAIN_TEX" "$OUTPUT_DIR/${PDF_NAME}_assets"
 ```
 
-`compile.py` 会统一完成以下编译前处理：
-- 若检测到中文且主文件尚无 CJK 支持，自动在主文件 preamble 中补入 LuaLaTeX 所需中文支持；
-- 自动注释掉与 Unicode 编译栈冲突的 `fontenc` / `inputenc`；
-- 自动识别 `bibtex` / `biber` / 已内置 `.bbl` 的情况；
-- 自动忽略常见编译中间文件与未被源码引用的游离 PDF，避免把无关产物上传到远端编译服务。
+`render_figures.py` 會依 LaTeX `\includegraphics` 的出現順序輸出 `fig01.png`、`fig02.png`……；PDF source 圖會用 `pdftoppm -png -r 300 -cropbox -singlefile` 渲染，以保留高清文字與線條並減少整頁空白。若 source 圖已是 PNG/JPG，則直接複製。若某張圖轉換失敗，才手動 fallback。
 
-编译失败时：读取 stderr 中的错误日志，参考 `references/compile-errors.md` 修复源码，重新编译（最多重试 2 次）。
+由目前**對話模型**讀取主 `.tex` 與其 `\input{}` / `\include{}` 引用的正文檔，直接產出：
 
-编译成功后清理掉中间文件：
+```bash
+$OUTPUT_DIR/$PDF_NAME.md
+```
+
+若檔名包含不適合作為路徑的字元，可替換為安全字元，但最終必須回報保存路徑。
+
+Markdown 結構要求：
+
+- `#` 使用自然繁體中文論文題名，不保留英文題名或中英並列。
+- 標題下保留英文原題與作者/機構資訊。
+- `摘要` 可寫成 `## Abstract` 下一行 `## 摘要`，不強制編號。
+- 從 `Introduction` 起，章節與小節必須編號，並同時保留英文標題與繁中標題：
+  - `\section{Introduction}` → `## 1. Introduction` 下一行 `## 1. 引言`
+  - `\subsection{Method}` → `### 3.1 Method` 下一行 `### 3.1 方法`
+  - `\subsubsection{}`、`\paragraph{}` 也按層級延續編號，採英文標題一行、中文標題一行。
+- 正文採段落級雙語格式：英文原文自然段在前，對應繁中翻譯緊跟在後；不要做成整章 Original + 整章 Translation。
+- 若 LaTeX source 將同一自然段拆成多行，先合併成同一英文段落，再放對應翻譯。
+- 列表轉成 Markdown 列表。
+- 表格若簡單則轉成 Markdown 表格；複雜表格可保留為 fenced code block 或簡潔文字說明。
+- 每個表格 caption 必須中英成對：
+  - `Table X: <original caption>`
+  - `表 X：<中文 caption>`
+- 公式保留 LaTeX；行內公式用 `$...$`，展示公式用 `$$...$$` 或原 LaTeX 環境。
+- 圖片必須保存在 `$OUTPUT_DIR/${PDF_NAME}_assets/`，並用 Markdown 圖片語法嵌入：`![圖X：中文說明](相對路徑.png)`。
+- 每張圖片下方必須有中英 caption，英文原文不能省略 `Figure X:` 前綴：
+  - `Figure X: <original caption>`
+  - `圖 X：<中文 caption>`
+
+引用與交叉引用規則：
+
+- citation 指令必須轉成純文字方括號 key 列表，不保留 LaTeX citation command，也不做超連結。
+  - `\cite{OpenScene, maskclustering, conceptfusion}` → `[OpenScene, maskclustering, conceptfusion]`
+  - `\citep{SAM}`、`\citet{CLIP}`、`\citealp{foo,bar}` → `[SAM]`、`[CLIP]`、`[foo, bar]`
+- 文中交叉引用必須解析成純文字編號，不保留 LaTeX ref command，也不做超連結。
+  - `Fig.~\ref{fig:pipeline}` → `Figure 2` 或 `圖 2`
+  - `Sec.~\ref{subsec:method}` → `Section 3.2` 或 `第 3.2 節`
+  - `Tab.~\ref{tab:main}` → `Table 1` 或 `表 1`
+- 若無法可靠解析某個交叉引用，優先根據圖表/章節出現順序推斷；仍不確定時才保留原始 `\ref{...}`，並在自檢中說明。
+
+翻譯規則：
+
+- **翻譯範圍：** 預設只翻正文，不翻附錄；若同一檔案中出現 `\appendix`，預設只翻該命令之前的內容。使用者明確要求「翻譯全文」時才翻附錄。
+- **必須翻譯：** 正文敘述、摘要、圖表標題、列表項、腳註描述文字，以及程式碼區塊中的註解。
+- **必須保留原文：** 與翻譯內容對應的英文原文都必須保留，並置於翻譯之前。
+- **保留不翻：** 數學環境、citation/ref key、圖片路徑、URL、程式碼本體、`.bib`、人名、機構名、模型名、資料集名。
+- **專有名詞：** Transformer、Softmax、Token 等通用學術術語保留英文，不要生硬硬譯。
+- **多篇處理：** 多篇論文順序處理；只有使用者明確要求平行委派時，才使用 subagent。
+
+譯後必須自檢：
+
+- 確認 `.md` 檔存在且非空。
+- 快速檢查 Markdown 開頭包含中文標題與摘要。
+- 檢查從 Introduction 起章節/小節皆有編號，且英文標題與繁中標題成對出現。
+- 檢查 `Figure X:` / `圖 X：`、`Table X:` / `表 X：` 成對出現，圖片下方英文 caption 不缺 `Figure X:` 前綴。
+- 檢查正文沒有未解析的 `Fig.~\ref{...}`、`Tab.~\ref{...}`、`Sec.~\ref{...}` 等引用。
+- 檢查正文沒有殘留 `\cite{...}`、`\citep{...}`、`\citet{...}` 等 citation command；應已轉為 `[key1, key2]`。
+- 檢查正文沒有大段未翻譯英文，除非屬於模型名、資料集名、citation key、公式、程式碼、URL、圖片路徑等保留範圍。
+- 確認 Markdown 圖片相對連結指向存在的 `.png` / `.jpg`，且使用 `![...](...)` 圖片語法。
+
+---
+
+## 第四步：清理
 
 ```bash
 python3 {SKILL_DIR}/scripts/cleanup.py "$OUTPUT_DIR"
 ```
 
-多篇论文时，所有论文都完成 PDF 编译并保存后再进行中间文件清理。
+多篇論文時，所有 Markdown 都完成並保存後再清理中間檔。
 
-最后输出 PDF 保存路径。
+最後回報 Markdown 保存路徑；若有圖片資源目錄，也同時回報。
 
 ---
 
-## 参考文件
-- `references/compile-errors.md`：编译常见错误及修复方法
+## 參考文件
+
+- `references/compile-errors.md`：僅在使用者臨時要求 PDF 編譯時參考；預設 Markdown 流程不使用。

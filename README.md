@@ -1,93 +1,166 @@
-## 为什么开发 arXiv-translator Skill 🤔
+# arXiv Translator Skill
 
-新论文层出不穷，英文读得再顺也不如母语省心；我们想把这些论文变成排版规范、读着顺口的中文 PDF。
+這是一個給 Codex / Agent 使用的 arXiv 論文翻譯 Skill。它會從 arXiv LaTeX source 產生**雙語 Markdown**：英文原文在前、繁體中文翻譯在後，並將論文圖片整理成可直接嵌入 Markdown 的高品質資源。
 
-依托 CS 领域最常用的 arXiv 平台，我们编写了一个从 LaTeX 源码进行翻译并编译的 Skill，可在一键安装 Skill 后，直接告诉它想读什么论文，几分钟后，一篇排版清晰、语言易读的论文便呈现在你面前。
+目前預設**不產生 PDF**。重點是讓論文內容方便閱讀、搜尋、摘錄與後續筆記整理。
 
-> *本Skill采用中文进行开发，目的是为了进一步降低阅读门槛，同时也借这个例子说明：网上常被提到的 Skill，拆开来看并不神秘，本质上是把领域流程、约束和工具调用方式写进一份结构化说明里，相当于 Prompt 与工作流的整合与进阶，而非黑盒魔法。*
+## 功能
 
+你可以直接給 Agent arXiv ID、arXiv URL 或論文標題，例如：
 
-## 这个 Skill 是做什么的？ 🔧 
+```text
+翻譯 2411.16253 成 md 檔
+```
 
-在支持 Agent Skills 的环境里（例如 Codex、Claude Code、Cursor 等），安装本 Skill 后，你可以直接说明意图，例如：
+或：
 
-- 「帮我把 1706.03762 翻译成中文 PDF」/「翻译这篇 arXiv：https://arxiv.org/abs/…」
-- 「Limo: Less is more for reasoning 有中文版吗？给我翻译一版」/「我想读 xxx 这篇的中文版」
-- 多篇时可说：「翻译 2501.12948 和 Attention Is All You Need」
+```text
+我想讀 RoboRefer 的中文版，整理成 Markdown
+```
 
-核心是：给出能唯一定位论文的信息（ID、arXiv 链接或论文标题），并传达出翻译的目的；Agent 会自动基于本 Skill 里的步骤执行。
+Skill 會引導 Agent 完成：
 
-> 注：为节省 token 与处理时间，默认仅翻译正文部分；若需要全文翻译，请告知模型「翻译全文，包含附录」。
+1. 下載 arXiv e-print source。
+2. 找出主 `.tex` 與正文引用檔。
+3. 依 LaTeX `\includegraphics` 出現順序產生圖片資源。
+4. 將正文整理成英文原文 + 繁體中文翻譯的段落級雙語 Markdown。
+5. 清理中間下載目錄。
 
-Skill 会引导 Agent：
+## 圖片處理方式
 
-1. 拉取 arXiv LaTeX；无源码则说明并跳过。
-2. 翻译正文，公式、引用、标签、图表路径与常用学术英文词保留不译。
-3. 主文件 `\begin{document}` 前插入编译所需库与中文支持。
-4. `scripts/compile.py` 提交在线 LuaLaTeX 编译，生成 PDF。
+圖片優先從 LaTeX source 中的原始圖檔處理。若 source 圖是 PDF，會使用：
 
-本地仅需：Python 3 与 `requests`（`pip install requests`）。无需在本地配置任何 LaTeX 编译环境。
+```bash
+pdftoppm -png -r 300 -cropbox -singlefile
+```
 
+這個設定的目的：
 
-## 安装方式 💻 
+- `-png`：保留圖中文字與細線，不使用有損壓縮。
+- `-r 300`：使用 300 DPI，避免圖片解析度過低。
+- `-cropbox`：尊重 PDF 的 CropBox，減少整頁畫布造成的多餘空白。
+- `-singlefile`：每張 figure 輸出單一圖片檔。
 
-安装方式千千万，这里推荐最稳妥、对网络和权限要求最低的安装流程。
+輸出檔會命名為：
 
-1. Clone 本仓库：
+```text
+fig01.png
+fig02.png
+fig03.png
+...
+```
+
+若 source 圖本身已是 PNG/JPG，則直接複製到 assets 目錄。
+
+## Markdown 規則
+
+輸出的 Markdown 會採用段落級雙語格式：
+
+```markdown
+English paragraph.
+
+繁體中文翻譯段落。
+```
+
+章節標題會保留英文與繁中標題：
+
+```markdown
+## 1. Introduction
+## 1. 引言
+```
+
+圖片與表格 caption 也會中英成對：
+
+```markdown
+Figure 1: Original caption.
+
+圖 1：繁體中文 caption。
+```
+
+## Citation 規則
+
+LaTeX citation command 會轉成純文字方括號 key 列表，不保留 `\cite{}`，也不做超連結。
+
+例如：
+
+```latex
+\cite{OpenScene, maskclustering, conceptfusion}
+```
+
+會輸出為：
+
+```text
+[OpenScene, maskclustering, conceptfusion]
+```
+
+其他常見 citation command 也採同樣規則：
+
+```latex
+\citep{SAM}
+\citet{CLIP}
+```
+
+會輸出為：
+
+```text
+[SAM]
+[CLIP]
+```
+
+## 安裝方式
+
+1. Clone 本倉庫：
 
    ```bash
    git clone https://github.com/Leey21/arxiv-translator
    ```
 
-   注：若 Git 不可用，可直接下载压缩包解压。
-
-2. 打开你常用的 CLI / IDE Agent 对话，发送：
+2. 在 Codex 或支援 Agent Skills 的環境中，請 Agent 安裝本 repo 內的 skill 目錄：
 
    ```text
-   路径 `<path>` 中定义了一个 Skill，请你阅读并将其安装到你的 skills 目录下。
+   路徑 `<path>/arxiv-translator` 中定義了一個 Skill，請閱讀並安裝到你的 skills 目錄。
    ```
-   
-   注：将 `<path>` 替换为你克隆后的项目路径，即本仓库里 `arxiv-translator` 目录的绝对路径。
 
-以Codex为例，安装过程如下：
+   請將 `<path>` 換成你 clone 後的實際路徑。
 
-![Codex 安装示例](images/Install_Examples-Codex.png)
+## 需要的本機工具
 
-英文原版与中文译文的 PDF 页面对比，版式与公式结构保持一致，非必要内容不进行翻译，实现了对学术专有名词的保留，同时适配各种不同的论文模板：
+基本需求：
 
-![翻译前后 PDF 对比（节选1）](images/Showcase_1.png)
-![翻译前后 PDF 对比（节选2）](images/Showcase_2.png)
-![翻译前后 PDF 对比（节选3）](images/Showcase_3.png)
-## 和「直接把 PDF 丢给翻译」相比，优势在哪里？ 📊
+- Python 3
+- `pdftoppm`（通常由 poppler-utils 提供）
 
-| 维度 | 直接翻译 PDF | 本 Skill（LaTeX 源码路径） |
-|------|----------------|-----------------------------|
-| 版面与公式 | 整页/OCR 易乱版，公式与多栏易坏 | 在源码里保留数学与引用，再编译成正常 PDF |
-| 翻译粒度 | 常按页切块，和章节结构脱节 | 按标题、摘要、正文等结构译，细则见 `SKILL.md` |
-| 上下文与译文质量 | 切块输入，语境窄，术语与指代易不一致 | 能利用更大上下文，论证与术语更易统一 |
-| 可复核性 | 难按原结构改 | 产出 `.tex`，方便 diff 与局部重译 |
-| 依赖环境 | 各家工具形态不一 | 编译走在线 HTTP API，免本地 LaTeX |
+可檢查：
 
-当然，本 Skill 也有限制：仅适用于 arXiv 上提供 LaTeX 源码的稿件；纯 PDF 投稿则无法沿用同一流程。
-
-## 仓库结构 📂
-
+```bash
+python3 --version
+which pdftoppm
 ```
+
+若缺少 `pdftoppm`，PDF figure 仍可能無法轉成高品質 PNG。
+
+## 倉庫結構
+
+```text
 arxiv-translator/
-├── SKILL.md                 # Skill 主说明（Agent 实际读取的核心内容）
+├── SKILL.md
 ├── scripts/
-│   ├── download.py          # 按 arXiv ID 下载 e-print 并解压到工作目录
-│   ├── inspect_tex.py       # 扫描正文中可能未翻译的英文片段（辅助检查）
-│   ├── compile.py           # 将工作目录打包提交在线编译，写出 PDF
-│   └── cleanup.py           # 删除单篇论文的 .tmp_arxiv/<ID> 工作目录（该篇编译成功后调用）
+│   ├── download.py          # 下載 arXiv e-print、解壓並找主 tex
+│   ├── render_figures.py    # 依 includegraphics 順序產生高品質圖片
+│   ├── inspect_tex.py       # 輔助掃描 tex 中可能未處理的英文
+│   ├── compile.py           # 保留給臨時 PDF 編譯需求，預設流程不用
+│   └── cleanup.py           # 清理 .tmp_arxiv 與 inspect 暫存檔
 └── references/
-    └── compile-errors.md    # 编译失败时的排查参考
+    └── compile-errors.md    # 僅在臨時 PDF 編譯失敗時參考
 ```
 
-## 致谢 🙏
+## 限制
 
-在线编译依赖 [LaTeX-On-HTTP](https://github.com/YtoTech/latex-on-http) 提供的 HTTP 编译能力。本 Skill 中的 `compile.py` 通过其公共服务 `https://latex.ytotech.com/builds/sync` 提交工程，由服务端完成 LuaLaTeX 编译，省去了在本地安装与维护完整 LaTeX 环境的成本。若你在科研或工作中受益，也欢迎去了解、反馈或参与该上游项目。
+- 只適用於 arXiv 提供 LaTeX source 的論文。
+- 若 arXiv 只有 PDF，無法使用完整 source-based Markdown 流程。
+- 預設只翻正文，不翻附錄；若需要附錄，請明確要求「翻譯全文，包含附錄」。
+- citation 會保留 key，不會自動展開成完整 bibliography 條目。
 
----
+## 設計取向
 
-如有问题或改进建议，欢迎在 Issues 中讨论 💬
+這個 Skill 的目標不是做一次性的逐頁 PDF 翻譯，而是利用 LaTeX source 的結構資訊，產出更容易閱讀與二次整理的 Markdown。公式、圖表、citation key、模型名與資料集名會盡量保留原貌，正文則以繁體中文補在英文原文之後，方便對照閱讀。
