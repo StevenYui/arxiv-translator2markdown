@@ -154,12 +154,6 @@ arxiv-translator/
     └── compile-errors.md    # 僅在臨時 PDF 編譯失敗時參考
 ```
 
-## 致謝
-
-感謝Leey21 LY提供的arxiv-translator，以此為基礎更新為輸出markdown檔案。
-
-線上編譯依賴 LaTeX-On-HTTP 提供的 HTTP 編譯能力。本 Skill 中的 compile.py 透過其公共服務 https://latex.ytotech.com/builds/sync 提交工程，由服務端完成 LuaLaTeX 編譯，省去了在本地安裝與維護完整 LaTeX 環境的成本。若你在科研或工作中受益，也歡迎去了解、回饋或參與該上游計畫。
-
 ## 限制
 
 - 只適用於 arXiv 提供 LaTeX source 的論文。
@@ -170,3 +164,7 @@ arxiv-translator/
 ## 設計取向
 
 這個 Skill 的目標不是做一次性的逐頁 PDF 翻譯，而是利用 LaTeX source 的結構資訊，產出更容易閱讀與二次整理的 Markdown。公式、圖表、citation key、模型名與資料集名會盡量保留原貌，正文則以繁體中文補在英文原文之後，方便對照閱讀。
+
+## 來源與致謝
+
+本專案基於 [Leey21/arxiv-translator](https://github.com/Leey21/arxiv-translator) 修改而來，原專案提供 arXiv LaTeX source 翻譯流程。本版本調整為雙語 Markdown 輸出、繁體中文說明，以及高品質圖片轉換流程。
