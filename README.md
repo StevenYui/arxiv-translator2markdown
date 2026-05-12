@@ -154,6 +154,12 @@ arxiv-translator/
     └── compile-errors.md    # 僅在臨時 PDF 編譯失敗時參考
 ```
 
+## 致謝
+
+感謝Leey21 LY提供的arxiv-translator，以此為基礎更新為輸出markdown檔案。
+
+線上編譯依賴 LaTeX-On-HTTP 提供的 HTTP 編譯能力。本 Skill 中的 compile.py 透過其公共服務 https://latex.ytotech.com/builds/sync 提交工程，由服務端完成 LuaLaTeX 編譯，省去了在本地安裝與維護完整 LaTeX 環境的成本。若你在科研或工作中受益，也歡迎去了解、回饋或參與該上游計畫。
+
 ## 限制
 
 - 只適用於 arXiv 提供 LaTeX source 的論文。
